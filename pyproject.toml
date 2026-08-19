@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools==81.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mv-srbf"
+version = "0.1.0"
+description = "Multi-view semantic recovery-before-fusion for multi-modal ReID."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "torch==2.6.0",
+  "torchvision==0.21.0",
+  "numpy==2.4.6",
+  "Pillow==12.2.0",
+  "PyYAML==6.0.3",
+  "tifffile==2026.6.1",
+  "safetensors==0.8.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.0"]
+faiss = ["faiss-cpu==1.14.3"]
+logging = ["trackio==0.27.0"]
+timm = ["timm==1.0.27"]
+openai-clip = ["clip @ git+https://github.com/openai/CLIP.git"]
+open-clip = ["open_clip_torch==3.3.0"]
+transformers = ["transformers==5.12.0"]
+flops = ["fvcore==0.1.5.post20221221"]
+visualization = ["matplotlib==3.11.0", "grad-cam==1.5.5", "scikit-learn==1.9.0"]
+all = [
+  "faiss-cpu==1.14.3",
+  "trackio==0.27.0",
+  "timm==1.0.27",
+  "clip @ git+https://github.com/openai/CLIP.git",
+  "open_clip_torch==3.3.0",
+  "transformers==5.12.0",
+  "fvcore==0.1.5.post20221221",
+  "matplotlib==3.11.0",
+  "grad-cam==1.5.5",
+  "scikit-learn==1.9.0",
+]
+
+[project.scripts]
+mvsrbf-train = "tools.train:main"
+mvsrbf-infer = "tools.infer:main"
+mvsrbf-vis-topk = "tools.vis_any_modal_topk:main"
+mvsrbf-vis-grad-cam = "tools.vis_grad_cam:main"
+mvsrbf-vis-tsne = "tools.vis_tsne:main"
+mvsrbf-vis-feature-distribution = "tools.vis_feature_distribution:main"
+
+[tool.setuptools.packages.find]
+include = [
+  "data*",
+  "engine*",
+  "evaluation*",
+  "losses*",
+  "models*",
+  "tools*",
+  "utils*",
+  "visualization*",
+]
+
+[tool.setuptools.data-files]
+"." = ["README.md", "requirements.txt"]
+"configs/experiments" = [
+  "configs/experiments/base.yaml",
+  "configs/experiments/msvr310.yaml",
+  "configs/experiments/rgbn300.yaml",
+  "configs/experiments/rgbnt100.yaml",
+  "configs/experiments/wmveid863.yaml",
+]
+"configs/data" = [
+  "configs/data/base.yaml",
+  "configs/data/msvr310.yaml",
+  "configs/data/rgbn300.yaml",
+  "configs/data/rgbnt100.yaml",
+  "configs/data/wmveid863.yaml",
+]
+"docs" = [
+  "docs/CONFIGURATION.md",
+  "docs/DATASETS.md",
+  "docs/PRETRAINED_WEIGHTS.md",
+  "docs/REQUIREMENTS.md",
+]

@@ -1,0 +1,5 @@
+defaults:
+  - ./base
+  - ../data/rgbn300
+
+output_dir: "logs/rgbn300"

@@ -1,0 +1,224 @@
+defaults:
+  - ../data/base
+
+seed: 42
+deterministic: true
+
+model:
+  device:
+    mode: "cuda_single"
+    ids: [0]
+    dist_backend: "auto"
+  name: "MVSRBF"
+  # encoder wraps backbone trunk + SIE + sharing.  The model stores it as self.encoder.
+  encoder:
+    backbone:
+      source: "openai-clip" # torchvision, torch_hub, timm, dinov2, dinov3, openai-clip, open-clip, huggingface-hub, transformers or custom
+      name: "ViT-B/16" # Default CLIP ViT-B/16 run; use torchvision/timm names for other sources.
+      # pretrained: true enables pretrained weight loading.
+      #   When pretrained_weights_path is set, the source-library download is skipped
+      #   and the explicit local file is loaded instead.
+      # pretrained_weights_path: explicit local backbone weight file (CLIP .pt, timm .bin, etc.).
+      #   Do NOT point this to project training checkpoints (best_train_loss.pth);
+      #   those are loaded automatically by the trainer at test time.
+      # At test/inference time, pretrained and pretrained_weights_path are always
+      # ignored because the project checkpoint overwrites all backbone weights.
+      pretrained: true
+      pretrained_weights_path: "../weights/clip_vit_b_16.pt"
+      # DINOv3 only: include register tokens (official x_storage_tokens) in the descriptor.
+      memory:
+        enabled: false
+        aggregation: "mean"
+      last_stride: 1 # CNN final stage uses stride 1; token backbones ignore this field.
+      vit_stem:
+        enabled: true # Enable only for supported ViT / CLIP-ViT token backbones.
+        mode: "auto"
+        stride_ratio: 0.75
+    sie:
+      enabled: true
+      scale: 3.0
+      init: "trunc_normal"
+      std: 0.02
+      dim_index: 0
+    sharing:
+      backbone: true # false gives each modality a private trunk; true shares the pretrained trunk.
+  heads:
+    with_normneck: true
+    local_global:
+      enabled: false # ViT-only; concatenate CLS with pooled patch tokens and reduce back to the backbone feature width.
+    sharing:
+      modal_heads: false # false gives each modality a private normneck/classifier head.
+      modal_centers: false # false gives each modality a private center-loss table.
+  losses:
+    # Each term's contribution to the total objective is simply:
+    #     weight(term) * raw_loss(term)
+    # `weights` below is the SINGLE magnitude control per term (the "individual"
+    # setting). There are no per-loss-type `scale` multipliers; magnitudes that used
+    # to live in ce/triplet/center/cross scales are folded directly into these weights.
+    # Every recognized key is listed; an omitted key defaults to 1.0.
+    # Recovery is NOT a weight here: its magnitude comes from mv_srbf.recovery.scale
+    # and its on/off from mv_srbf.recovery.enabled.
+    weights:
+      encoding_ce: 1.0
+      encoding_triplet: 1.0
+      encoding_center: 0.0005
+      fusion_ce: 1.0
+      fusion_triplet: 1.0
+      fusion_center: 0.0005
+      cross_triplet: 0.0 # 0.33
+      cross_center: 0.0 # 0.33
+      ortho_intra: 0.5
+      ortho_inter: 0.5
+    triplet:
+      # Shape-only hyper-parameters (no magnitude `scale`; use the weights above).
+      name: "hard_softmax" # hard, all, hard_softmax, all_softmax, contrastive, circle, multi_similarity, or supcon
+      margin: 0.0
+      temperature: 1.0
+      gamma: 256.0
+      scale_pos: 2.0
+      scale_neg: 40.0
+      base: 0.5
+    ce:
+      # Shape-only hyper-parameters (no magnitude `scale`; use the weights above).
+      name: "ce" # ce, label_smooth, normalized_softmax, arcface, cosface, am_softmax, or sphereface
+      label_smooth: true
+      epsilon: 0.1
+      margin: 0.5
+      logit_scale: 30.0
+      sphere_m: 4
+    cross_modal:
+      # `enabled` toggles whether the path is built/computed; magnitude is the
+      # cross_triplet / cross_center weights above (no per-term `scale`).
+      triplet:
+        enabled: true
+        name: "hard_softmax"
+        margin: 0.3
+        temperature: 1.0
+      center:
+        enabled: true
+  mv_srbf:
+    n_recovery_heads: 8
+    # Fusion order: noise -> modal MLP -> inter-modal ortho -> final fusion MLP.
+    # Noise std = ratio * std(pre-MLP fusion tokens); 0 disables.
+    fusion_noise_ratio: 0.1
+    fusion:
+      # single: MLP fuses all modalities into one modal-width feature (project default).
+      # full:   MLP keeps the full concatenated modality width (num_modalities * feature_dim).
+      # concat: directly concatenate modality features with no fusion MLP.
+      mode: "single"
+    recovery:
+      enabled: true
+      # Number of independently-parameterized cross-modal recovery blocks.
+      num_layers: 1
+      scale: 1.0
+
+solver:
+  optimizer:
+    name: "AdamW"
+    base_lr: 0.00035        # single LR when use_param_groups=false; also the "other"-group default
+    bias_lr_factor: 2.0     # multiplies the LR of no-decay (bias/norm) params; applies in module_lrs mode too
+    weight_decay: 1.0e-4
+    weight_decay_bias: 1.0e-4
+    use_param_groups: true
+    # LR is set in three independent layers (do not confuse them):
+    #   1. WHICH base LR a parameter gets, resolved here by exactly one mode:
+    #        use_param_groups=false -> every param uses base_lr
+    #        use_param_groups=true + module_lrs -> per named group below
+    #        use_param_groups=true without module_lrs -> base_lr with bias/norm groups
+    #   2. SHAPE over time: solver.lr_scheduler (warmup_factor then cosine) scales every group's base_lr.
+    #   3. The trainer uses one global training schedule.
+    # NOTE: the `recovery` LR group (mask_token + recovery.* params) is unrelated to the
+    #   recovery LOSS magnitude (model.mv_srbf.recovery.scale); they share a name only.
+    # module_lrs maps named optimizer param groups to learning rates.
+    # Groups (defined in utils/optimizer_factory._default_group_prefixes):
+    #   backbone      -> encoder.trunk.* (pretrained ViT/ResNet trunk, typically low LR)
+    #   encoder       -> encoder.sie.*   (SIE embedding, learned from scratch)
+    #   modal_heads   -> modal_heads.*   (per-modality norm-neck + classifier) and,
+    #                   if heads.local_global is enabled, the local-global reducers
+    #   recovery      -> mask_token, recovery.*
+    #   fusion        -> internal per-modality projection, fuse_mlp.*, fuse_head.*
+    #   other         -> every parameter not matched by a prefix above. Here that is the
+    #                   center-loss tables (center_modal / center_fuse / center_cross).
+    #                   The former `center` group is folded into `other`.
+    module_lrs:
+      backbone: 5.0e-6
+      encoder: 0.00035        # SIE
+      modal_heads: 0.00035   # (+ local_global if enabled)
+      recovery: 0.00035
+      fusion: 0.00035
+      other: 0.00035          # center_modal / center_fuse / center_cross 
+
+  lr_scheduler:
+    name: "CosineAnnealingWarmupLR"
+    warmup_factor: 0.1
+  max_epochs: 100
+  warmup_updates: 10
+  amp_enabled: true
+  amp:
+    init_scale: 128.0
+    growth_factor: 2.0
+    backoff_factor: 0.5
+    growth_interval: 2000
+  checkpoint:
+    period_iters: 10
+    save_snapshots: false
+    keep_last: 10
+  log_period: 10
+  early_stop:
+    enabled: true
+    check_interval_iters: "auto"
+    patience_checks: 10
+    min_delta: 0.0
+
+inference:
+  metric: "cos" # "l2"
+  default_num: 50
+  ranks: [1, 5, 10]
+  # Default ReID protocol: remove same-ID gallery samples matching aux dim 0.
+  remove_same_aux_dims: [0]
+  remove_any_aux_dims: []
+  # feature_stage: modal (encoder descriptors), recover, or fusion.
+  # feature_aggregation for modal/recover: mean, concat, or the trained fusion module.
+  # modal concat/fusion mean-fills missing slots from the available modalities.
+  # fusion returns the native model fusion output and ignores feature_aggregation.
+  feature_stage: "fusion"
+  feature_aggregation: "mean"
+  feat_norm: true
+  neck_feat: "before"
+  search:
+    backend: "torch" # torch or faiss
+    faiss:
+      use_gpu: false
+      index: "flat"
+  re_ranking:
+    enabled: false
+    k1: 20
+    k2: 6
+    lambda: 0.3
+  aqe:
+    enabled: false
+    alpha: 3.0
+    qe_time: 1
+    qe_k: 10
+output_dir: "logs/mv_srbf"
+
+logging:
+  tracker: "trackio"          # "trackio" or "none" (local JSONL only)
+  project: "MV-SRBF"
+  # run_name is a base label only; every startup (incl. breakpoint resume) appends a
+  # timestamp and logs to a NEW run/visualization (resume="never"). null -> "run-<ts>".
+  run_name: null
+  dashboard:                  # trackio local web UI for live monitoring during training
+    enabled: true
+    host: "127.0.0.1"
+    port: 7860
+    open_browser: true
+    share: false
+  archive:
+    print_config: true
+    print_model: true
+  model_summary:
+    enabled: true
+    flops: true
+    flops_backend: "fvcore"
+    allow_fallback: true

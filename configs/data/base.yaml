@@ -1,0 +1,70 @@
+dataset:
+  name: "BASE"
+  root: "../datasets"
+  num_modalities: 1
+  num_classes: 100
+  modalities: {modal1: "RGB"}
+
+input:
+  size: "auto"
+  padding: [5, 10]
+  padding_fill: 0
+  resize_interpolation: "auto"
+  normalize:
+    default: {mean: [0.485, 0.456, 0.406], std: [0.229, 0.224, 0.225]}
+  train_augmentation:
+    shared:
+      random_horizontal_flip: 0.5
+      random_crop: true
+
+    batch_augment:
+      enable: true
+      random_erasing:
+        enable: true
+        # mode selects how erasing is shared across modalities:
+        #   synchronous  -> the SAME erase rectangle is applied to every modality of a
+        #                   sample (keeps cross-modal spatial alignment).
+        #   asynchronous -> each modality is erased independently (different region per
+        #                   modality), for modality-specific robustness.
+        mode: "synchronous"
+        p: 0.5
+        scale: [0.02, 0.4]
+        ratio: [0.3, 3.33]
+  inference_augmentation:
+    shared:
+      random_horizontal_flip: 0.0
+
+dataloader:
+  train:
+    num_workers: 2
+    pin_memory: true
+    drop_last: true
+    sampler:
+      name: "random"
+      o_ids_per_gpu: 8
+      k_instances_per_id: 4
+      aux_dims: [0]
+      shuffle: true
+  train_eval:
+    enabled: true
+    period_epochs: 1
+    batch_size: 32
+    num_workers: 2
+    pin_memory: true
+    sampler:
+      shuffle: false
+      drop_last: false
+  query:
+    batch_size: 32
+    num_workers: 2
+    pin_memory: true
+    sampler:
+      shuffle: false
+      drop_last: false
+  gallery:
+    batch_size: 64
+    num_workers: 2
+    pin_memory: true
+    sampler:
+      shuffle: false
+      drop_last: false

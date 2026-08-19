@@ -1,0 +1,21 @@
+defaults:
+  - ./base
+
+dataset:
+  name: "WMVEID863"
+  num_modalities: 3
+  num_classes: 603
+  modalities: {modal1: "RGB", modal2: "NIR", modal3: "TIR"}
+
+input:
+  normalize:
+    modal1: {mean: [0.3748, 0.3481, 0.3588], std: [0.2750, 0.2755, 0.2771]}
+    modal2: {mean: [0.4461, 0.4461, 0.4461], std: [0.2434, 0.2434, 0.2434]}
+    modal3: {mean: [0.7587, 0.3481, 0.2957], std: [0.2312, 0.2699, 0.2183]}
+
+dataloader:
+  train:
+    drop_last: false
+    sampler:
+      name: "unique"
+      aux_dims: [0]

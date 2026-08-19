@@ -1,0 +1,21 @@
+defaults:
+  - ./base
+
+dataset:
+  name: "RGBNT100"
+  num_modalities: 3
+  num_classes: 50
+  modalities: {modal1: "RGB", modal2: "NIR", modal3: "TIR"}
+
+input:
+  normalize:
+    modal1: {mean: [0.2723, 0.2686, 0.2721], std: [0.2191, 0.2210, 0.2131]}
+    modal2: {mean: [0.3396, 0.3391, 0.3391], std: [0.1884, 0.1883, 0.1883]}
+    modal3: {mean: [0.7566, 0.3262, 0.3188], std: [0.2940, 0.2885, 0.2291]}
+    
+dataloader:
+  train:
+    drop_last: false
+    sampler:
+      name: "unique"
+      aux_dims: [0]

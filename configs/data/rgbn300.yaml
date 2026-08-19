@@ -1,0 +1,20 @@
+defaults:
+  - ./base
+
+dataset:
+  name: "RGBN300"
+  num_modalities: 2
+  num_classes: 150
+  modalities: {modal1: "RGB", modal2: "NIR"}
+
+input:
+  normalize:
+    modal1: {mean: [0.2991, 0.2942, 0.2899], std: [0.2283, 0.2290, 0.2192]}
+    modal2: {mean: [0.3708, 0.3708, 0.3708], std: [0.1947, 0.1948, 0.1947]}
+    
+dataloader:
+  train:
+    drop_last: true
+    sampler:
+      name: "unique"
+      aux_dims: [0]

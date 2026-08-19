@@ -1,0 +1,5 @@
+defaults:
+  - ./base
+  - ../data/msvr310
+        
+output_dir: "logs/msvr310"

@@ -1,0 +1,5 @@
+defaults:
+  - ./base
+  - ../data/wmveid863
+
+output_dir: "logs/wmveid863"
