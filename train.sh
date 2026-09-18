@@ -7,6 +7,9 @@ set -euo pipefail
 PROJ_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJ_DIR"
 
+export TRACKIO_DIR="$PROJ_DIR/logs/trackio"
+mkdir -p "$TRACKIO_DIR"
+
 EXPERIMENTS=(
     rgbn300
     rgbnt100
