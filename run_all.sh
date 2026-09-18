@@ -7,6 +7,9 @@ set -euo pipefail
 PROJ_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$PROJ_DIR"
 
+export TRACKIO_DIR="$PROJ_DIR/logs/trackio"
+mkdir -p "$TRACKIO_DIR"
+
 echo -e "\n\033[1;33m##########  PHASE 1: TRAIN  ##########\033[0m"
 bash "${PROJ_DIR}/train.sh"
 
